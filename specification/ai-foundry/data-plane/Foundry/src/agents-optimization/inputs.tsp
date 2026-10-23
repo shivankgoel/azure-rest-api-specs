@@ -318,7 +318,7 @@ union AgentOptimizationConfigurationType {
   @doc("One-shot prompt optimization that generates a single candidate.")
   prompt_optimization: "prompt_optimization",
 
-  @doc("Generates a single candidate containing zero or more skill outcomes from trace evidence, with optional reporting-only before/after evaluation.")
+  @doc("Generates a single candidate containing zero or more skill outcomes from trace evidence, with optional reporting-only evaluation recorded on baseline and learned candidates.")
   skill_optimization: "skill_optimization",
 }
 
@@ -447,7 +447,7 @@ model AgentOptimizationTraceWindow {
   type: string;
 }
 
-/** Selects recent trace conversations in a completed past half-open interval, preferring traces with annotations or evaluation results. */
+/** Selects trace conversations in a completed past half-open interval. */
 model AgentOptimizationFixedTraceWindow extends AgentOptimizationTraceWindow {
   @doc("Fixed-window discriminator.")
   type: "fixed";
@@ -466,17 +466,17 @@ model AgentOptimizationFixedTraceWindow extends AgentOptimizationTraceWindow {
   max_traces?: int32 = 100;
 }
 
-/** Proposed explicit trace-ID selection. Service support and detailed lookup behavior are TBD; this contract does not establish runtime availability. */
+/** Selects specific trace conversations by ID within a telemetry lookback horizon. */
 model AgentOptimizationTraceIdsTraceWindow
   extends AgentOptimizationTraceWindow {
-  @doc("Explicit trace-ID selection discriminator. Service support is TBD.")
+  @doc("Explicit trace-ID selection discriminator.")
   type: "trace_ids";
 
-  @doc("Explicit trace identifiers to look up within the configured telemetry source. Service support, list-size limits, duplicate handling, and missing-ID behavior are TBD.")
+  @doc("Explicit trace identifiers to look up within the configured telemetry source and lookback horizon.")
   @minItems(1)
   trace_ids: string[];
 
-  @doc("Requested telemetry lookup horizon in hours. Service support, the lookback anchor, and maximum supported horizon are TBD.")
+  @doc("Telemetry lookup horizon in hours.")
   @minValue(1)
   lookback_hours: int32;
 }
@@ -507,15 +507,15 @@ model SkillOptimizationTraceEvaluatorGenerationConfiguration
   type: "agent_traces";
 }
 
-/** Reuses agent optimization evaluator, model, and concurrency inputs with a required validation set for reporting-only skill comparisons. */
+/** Service-prepared inputs for reporting-only baseline and learned-candidate evaluation. */
 model SkillOptimizationEvaluationConfiguration {
   ...OmitProperties<
     AgentOptimizationEvaluationConfiguration,
     "evaluators" | "training_set" | "validation_set"
   >;
 
-  @doc("Required validation set used unchanged for both before and after runs. Limited to 500 inline cases. Training sets are not accepted because evaluation does not guide skill generation.")
-  validation_set: AgentOptimizationEvaluationSet;
+  @doc("Evaluation set used unchanged for the baseline and learned candidate. When omitted on create, the service generates a trace-derived target-completion dataset and returns its exact dataset reference after preparation. Inline sets are limited to 500 cases. Training sets are not accepted because evaluation does not guide skill generation.")
+  validation_set?: AgentOptimizationEvaluationSet;
 
   @doc("Existing evaluator references on create. At least one reference or evaluator_generation_configuration is required. On job GET after preparation, contains the resolved exact versions used unchanged for baseline and generated-candidate evaluation, including generated evaluators when requested. When both are supplied, use their combined evaluator set.")
   @minItems(1)
