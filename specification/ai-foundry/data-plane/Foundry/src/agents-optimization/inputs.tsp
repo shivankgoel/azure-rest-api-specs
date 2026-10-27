@@ -286,26 +286,29 @@ model AgentOptimizationCandidateSearchConfiguration {
   max_candidates?: int32 = 1;
 }
 
-/** Reusable quality-measurement configuration. */
+/** Shared evaluation inputs for agent and skill optimization. All fields are optional in the schema; the service validates required combinations for the selected optimization type and rejects invalid requests. */
 model AgentOptimizationEvaluationConfiguration {
-  @doc("Evaluation set used to guide the optimization search. Inline data supports up to 2,000 test cases when a separate validation set is supplied; otherwise it is also used for validation and is limited to 500.")
-  training_set: AgentOptimizationEvaluationSet;
+  @doc("Required by the service for agent optimization to guide the search. Not accepted for skill optimization, where evaluation is reporting-only. Inline data supports up to 2,000 test cases when a separate validation set is supplied; otherwise it is also used for validation and is limited to 500.")
+  training_set?: AgentOptimizationEvaluationSet;
 
-  @doc("Held-out evaluation set used for full candidate evaluation, limited to 500 inline test cases. The training set is reused and subject to the same 500-test-case validation limit when omitted.")
+  @doc("Held-out evaluation set used for full candidate evaluation, limited to 500 inline test cases. Agent optimization reuses training_set when omitted. Skill evaluation requires a caller-supplied validation_set, reused unchanged for the baseline and learned candidate; the service rejects omission rather than generating a dataset from traces.")
   validation_set?: AgentOptimizationEvaluationSet;
 
-  @doc("Evaluator references used to score candidate quality.")
+  @doc("Existing evaluator references. Required by the service for agent optimization. Skill evaluation requires these references, evaluator_generation_configuration, or both; when both are supplied, use their combined evaluator set. After skill evaluation preparation, contains the resolved exact versions used unchanged for baseline and learned-candidate evaluation.")
   @minItems(1)
   @maxItems(20)
-  evaluators: AgentOptimizationEvaluator[];
+  evaluators?: AgentOptimizationEvaluator[];
 
-  @doc("Model configuration used by model-based evaluators and conversation simulation.")
-  evaluation_model: EvaluationModelConfiguration;
+  @doc("Model configuration used by model-based evaluators and conversation simulation. Required by the service for agent optimization and when skill evaluation is requested.")
+  evaluation_model?: EvaluationModelConfiguration;
 
   @doc("Maximum number of target-agent runs executed concurrently during each single-turn evaluation. If omitted, the service defaults to 1. Conversation evaluation supports only 1.")
   @minValue(1)
   @maxValue(10)
   max_concurrent_agent_runs?: int32 = 1;
+
+  @doc("Opt-in creation of evaluators for skill optimization using the job's optimization_model_configuration, not evaluation_model. No separate generation model is accepted. Resolved exact versions are returned in evaluators after preparation. Not accepted for agent optimization; use existing evaluator references there.")
+  evaluator_generation_configuration?: AgentOptimizationEvaluatorGenerationConfiguration;
 }
 
 /** Optimization job configuration types. */
@@ -318,7 +321,7 @@ union AgentOptimizationConfigurationType {
   @doc("One-shot prompt optimization that generates a single candidate.")
   prompt_optimization: "prompt_optimization",
 
-  @doc("Generates a single candidate containing zero or more skill outcomes from trace evidence, with optional reporting-only before/after evaluation.")
+  @doc("Generates a single candidate containing zero or more skill outcomes from trace evidence, with optional reporting-only evaluation recorded on baseline and learned candidates.")
   skill_optimization: "skill_optimization",
 }
 
@@ -452,18 +455,7 @@ model AgentOptimizationFixedTraceWindow extends AgentOptimizationTraceWindow {
   @doc("Fixed-window discriminator.")
   type: "fixed";
 
-  #suppress "@azure-tools/typespec-azure-core/no-offsetdatetime" "Trace selection preserves the caller's explicit UTC offset."
-  @doc("Inclusive ISO 8601 timestamp with an explicit UTC offset. Must precede end_time and be in the past. The service validates the interval at submission.")
-  start_time: offsetDateTime;
-
-  #suppress "@azure-tools/typespec-azure-core/no-offsetdatetime" "Trace selection preserves the caller's explicit UTC offset."
-  @doc("Exclusive ISO 8601 timestamp with an explicit UTC offset. Must be at or before job submission time, forming a completed past interval. The service rejects future windows rather than waiting or clamping timestamps.")
-  end_time: offsetDateTime;
-
-  @doc("Maximum number of trace conversations to select. Defaults to 100. Select the latest matching traces, giving preference to those with human annotations, evaluation results, or both. Traces without feedback remain eligible.")
-  @minValue(1)
-  @maxValue(100)
-  max_traces?: int32 = 100;
+  ...OmitProperties<FixedTraceWindow, "type">;
 }
 
 /** Proposed explicit trace-ID selection. Service support and detailed lookup behavior are TBD; this contract does not establish runtime availability. */
@@ -472,13 +464,7 @@ model AgentOptimizationTraceIdsTraceWindow
   @doc("Explicit trace-ID selection discriminator. Service support is TBD.")
   type: "trace_ids";
 
-  @doc("Explicit trace identifiers to look up within the configured telemetry source. Service support, list-size limits, duplicate handling, and missing-ID behavior are TBD.")
-  @minItems(1)
-  trace_ids: string[];
-
-  @doc("Requested telemetry lookup horizon in hours. Service support, the lookback anchor, and maximum supported horizon are TBD.")
-  @minValue(1)
-  lookback_hours: int32;
+  ...OmitProperties<TraceIdsTraceWindow, "type">;
 }
 
 /** Trace evidence for skill optimization, selected independently of feedback availability. */
@@ -493,37 +479,21 @@ model AgentTracesOptimizationContext extends OptimizationContext {
   trace_window: AgentOptimizationTraceWindow;
 }
 
-/** Base configuration for service-generated skill evaluators. Evaluator generation uses the job's optimization_model_configuration; no separate generation model is accepted. */
+/** Base configuration for service-generated optimization evaluators. Currently supported for skill optimization only. Uses the job's optimization_model_configuration; no separate generation model is accepted. */
 @discriminator("type")
-model SkillOptimizationEvaluatorGenerationConfiguration {
+model AgentOptimizationEvaluatorGenerationConfiguration {
   @doc("Evaluator generation source discriminator.")
   type: string;
+
+  @doc("Additional instructions or context to guide evaluator generation from the selected source.")
+  prompt?: string;
 }
 
 /** Generates evaluators from the job's selected trace evidence. */
-model SkillOptimizationTraceEvaluatorGenerationConfiguration
-  extends SkillOptimizationEvaluatorGenerationConfiguration {
+model AgentOptimizationTraceEvaluatorGenerationConfiguration
+  extends AgentOptimizationEvaluatorGenerationConfiguration {
   @doc("Generate evaluators from the agent_traces context.")
   type: "agent_traces";
-}
-
-/** Reuses agent optimization evaluator, model, and concurrency inputs with a required validation set for reporting-only skill comparisons. */
-model SkillOptimizationEvaluationConfiguration {
-  ...OmitProperties<
-    AgentOptimizationEvaluationConfiguration,
-    "evaluators" | "training_set" | "validation_set"
-  >;
-
-  @doc("Required validation set used unchanged for both before and after runs. Limited to 500 inline cases. Training sets are not accepted because evaluation does not guide skill generation.")
-  validation_set: AgentOptimizationEvaluationSet;
-
-  @doc("Existing evaluator references on create. At least one reference or evaluator_generation_configuration is required. On job GET after preparation, contains the resolved exact versions used unchanged for baseline and generated-candidate evaluation, including generated evaluators when requested. When both are supplied, use their combined evaluator set.")
-  @minItems(1)
-  @maxItems(20)
-  evaluators?: AgentOptimizationEvaluator[];
-
-  @doc("Opt-in creation of evaluators using the job's optimization_model_configuration, not evaluation_model. No separate generation model is accepted. Resolved exact versions are returned in evaluators after preparation. Omitted when only existing evaluators are used.")
-  evaluator_generation_configuration?: SkillOptimizationEvaluatorGenerationConfiguration;
 }
 
 /** Configuration for generating a single skill candidate from trace evidence. The candidate can contain zero or more skill outcomes; no new learnings can produce an empty skill_results array without publishing versions. Optional evaluation reuses a non-generated baseline candidate. */
@@ -536,8 +506,8 @@ model SkillOptimizationConfiguration
   @minItems(1)
   context: OptimizationContext[];
 
-  @doc("Optional before/after evaluation using a required validation_set and shared agent optimization model, evaluator, and concurrency inputs. Requires target_configuration. Training sets are not accepted. Evaluate the same pinned target with baseline skills and proposed skills using the same validation set and resolved evaluator versions. Scores do not guide generation, ranking, selection, or publication. Omitted to skip performance evaluation.")
-  evaluation_configuration?: SkillOptimizationEvaluationConfiguration;
+  @doc("Optional before/after evaluation using the shared evaluation configuration. The service requires target_configuration, validation_set, evaluation_model, and existing evaluators or evaluator_generation_configuration. Training sets are not accepted. Evaluate the same pinned target with baseline skills and proposed skills using the same validation set and resolved evaluator versions. Scores do not guide generation, ranking, selection, or publication. Omitted to skip performance evaluation.")
+  evaluation_configuration?: AgentOptimizationEvaluationConfiguration;
 }
 
 @doc("Inputs for estimating an agent-optimization job.")

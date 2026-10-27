@@ -135,7 +135,7 @@ model AgentOptimizationSkillResult {
   @doc("Safe, human-readable explanation of why this skill was proposed or retained, grounded in the selected evidence. Omitted until available. Must not include sensitive trace excerpts or hidden model reasoning.")
   rationale?: string;
 
-  @doc("Artifact checks, including rejections. Absence does not imply success. Reporting-only before/after evaluation is separate from artifact validation.")
+  @doc("Artifact checks, including rejections. Absence does not imply success. Candidate evaluation is reported through AgentOptimizationCandidate.evaluation and is not included in per-skill validations.")
   validations?: AgentOptimizationSkillValidation[];
 
   @doc("Primary failure, rejection, or uncertain-publication reason. Detailed findings remain in validations. Omitted when there is no error.")

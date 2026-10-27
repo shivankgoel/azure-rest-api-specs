@@ -233,8 +233,8 @@ namespace Azure.AI.Projects;
 @@clientName(DataGenerationJobType, "DataGenerationJobKind");
 @@clientName(TracesDataGenerationJobSource.end_time, "EndAt");
 @@clientName(TracesDataGenerationJobSource.start_time, "StartAt");
-@@clientName(TracesEvaluatorGenerationJobSource.end_time, "EndAt");
-@@clientName(TracesEvaluatorGenerationJobSource.start_time, "StartAt");
+@@clientName(FixedTraceWindow.end_time, "EndAt");
+@@clientName(FixedTraceWindow.start_time, "StartAt");
 
 // --------------------------------------------------------------------------------
 // EvaluatorGenerationJobs sub‐client

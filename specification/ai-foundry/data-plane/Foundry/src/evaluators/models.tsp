@@ -235,7 +235,10 @@ model AgentEvaluatorGenerationJobSource extends EvaluatorGenerationJobSource {
 
 @doc("Traces source for evaluator generation jobs — conversation traces from Application Insights.")
 model TracesEvaluatorGenerationJobSource extends EvaluatorGenerationJobSource {
-  ...TracesJobSource;
+  ...OmitProperties<TracesJobSource, "start_time" | "end_time">;
+
+  @doc("Required trace selection: a fixed half-open window, or proposed explicit trace_ids selection whose service support is TBD. Replaces top-level start_time and end_time; fixed windows use ISO 8601 timestamps with explicit UTC offsets, not Unix seconds.")
+  trace_window: TraceWindow;
 }
 
 @doc("Dataset source for evaluator generation jobs — reference to a dataset.")

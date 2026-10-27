@@ -183,6 +183,46 @@ model AgentJobSource {
   agent_version?: string;
 }
 
+/** Trace selection shared by evaluator generation and skill optimization. */
+@discriminator("type")
+model TraceWindow {
+  @doc("Trace window discriminator.")
+  type: string;
+}
+
+/** Selects recent trace conversations in a completed past half-open interval, preferring traces with annotations or evaluation results. */
+model FixedTraceWindow extends TraceWindow {
+  @doc("Fixed-window discriminator.")
+  type: "fixed";
+
+  #suppress "@azure-tools/typespec-azure-core/no-offsetdatetime" "Trace selection preserves the caller's explicit UTC offset."
+  @doc("Inclusive ISO 8601 timestamp with an explicit UTC offset. Must precede end_time and be in the past. The service validates the interval at submission.")
+  start_time: offsetDateTime;
+
+  #suppress "@azure-tools/typespec-azure-core/no-offsetdatetime" "Trace selection preserves the caller's explicit UTC offset."
+  @doc("Exclusive ISO 8601 timestamp with an explicit UTC offset. Must be at or before job submission time, forming a completed past interval. The service rejects future windows rather than waiting or clamping timestamps.")
+  end_time: offsetDateTime;
+
+  @doc("Maximum number of trace conversations to select. Defaults to 100. Select the latest matching traces, giving preference to those with human annotations, evaluation results, or both. Traces without feedback remain eligible.")
+  @minValue(1)
+  @maxValue(100)
+  max_traces?: int32 = 100;
+}
+
+/** Proposed explicit trace-ID selection. Service support and detailed lookup behavior are TBD; this contract does not establish runtime availability. */
+model TraceIdsTraceWindow extends TraceWindow {
+  @doc("Explicit trace-ID selection discriminator. Service support is TBD.")
+  type: "trace_ids";
+
+  @doc("Explicit trace identifiers to look up within the configured telemetry source. Service support, list-size limits, duplicate handling, and missing-ID behavior are TBD.")
+  @minItems(1)
+  trace_ids: string[];
+
+  @doc("Requested telemetry lookup horizon in hours. Service support, the lookback anchor, and maximum supported horizon are TBD.")
+  @minValue(1)
+  lookback_hours: int32;
+}
+
 @doc("Traces source — conversation traces from Application Insights. Reusable shape spread into per-context discriminated subtypes.")
 model TracesJobSource {
   ...JobSourceDescription;
